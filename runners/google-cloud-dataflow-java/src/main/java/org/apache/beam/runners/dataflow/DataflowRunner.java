@@ -318,18 +318,33 @@ public class DataflowRunner extends PipelineRunner<DataflowPipelineJob> {
       dataflowOptions.getFilesToStage().stream()
           .forEach(
               stagedFileSpec -> {
-                File localFile;
+                String filePath;
                 if (stagedFileSpec.contains("=")) {
                   String[] components = stagedFileSpec.split("=", 2);
-                  localFile = new File(components[1]);
+                  filePath = components[1];
                 } else {
-                  localFile = new File(stagedFileSpec);
+                  filePath = stagedFileSpec;
                 }
-                if (!localFile.exists()) {
-                  // should be FileNotFoundException, but for build-time backwards compatibility
-                  // cannot add checked exception
-                  throw new RuntimeException(
-                      String.format("Non-existent files specified in filesToStage: %s", localFile));
+
+                if (filePath.startsWith("gs://")) {
+                  // For GCS files
+                  try {
+                    ResourceId resourceId = FileSystems.matchNewResource(filePath, false);
+                    if (!FileSystems.match(resourceId.toString()).metadata().iterator().hasNext()) {
+                      throw new RuntimeException(
+                          String.format("Non-existent GCS file specified in filesToStage: %s", filePath));
+                    }
+                  } catch (IOException e) {
+                    throw new RuntimeException(
+                        String.format("Error checking existence of GCS file %s: %s", filePath, e.getMessage()));
+                  }
+                } else {
+                  // For local files
+                  File localFile = new File(filePath);
+                  if (!localFile.exists()) {
+                    throw new RuntimeException(
+                        String.format("Non-existent local file specified in filesToStage: %s", filePath));
+                  }
                 }
               });
     } else {
